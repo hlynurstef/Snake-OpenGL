@@ -1,26 +1,34 @@
 package com.hlynurs15.prog1;
 
-public class Tuple<L,R> {
-	private final L left;
-	private final R right;
+public class Tuple<X,Y> {
+	private X x;
+	private Y y;
 	
-	public Tuple(L left, R right) {
-		this.left = left;
-		this.right = right;
+	public Tuple(X x, Y y) {
+		this.x = x;
+		this.y = y;
 	}
 	
-	public L getLeft() { return left; }
-	public R getRight() { return right; }
+	public Tuple(Tuple<X,Y> tuple) {
+		this.x = tuple.x;
+		this.y = tuple.y;
+	}
+	
+	public X getX() { return x; }
+	public Y getY() { return y; }
+	public void setX(X x) { this.x = x; }
+	public void setY(Y y) { this.y = y; }
 	
 	@Override
-	public int hashCode() { return left.hashCode() ^ right.hashCode(); }
+	public int hashCode() { return x.hashCode() ^ y.hashCode(); }
 	
 	@Override
 	public boolean equals(Object o) {
 		if (!(o instanceof Tuple)) {
 			return false;
 		}
-		Tuple tuple = (Tuple) o;
-		return this.left.equals(tuple.getLeft()) && this.right.equals(tuple.getRight());
+		@SuppressWarnings("unchecked")
+		Tuple<X,Y> tuple = (Tuple<X,Y>) o;
+		return this.x.equals(tuple.getX()) && this.y.equals(tuple.getY());
 	}
 }

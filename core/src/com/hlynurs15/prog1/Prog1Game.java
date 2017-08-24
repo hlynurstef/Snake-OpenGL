@@ -6,12 +6,15 @@ import com.badlogic.gdx.Input;
 import com.badlogic.gdx.graphics.GL20;
 
 import java.nio.FloatBuffer;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Random;
 
 import com.badlogic.gdx.utils.BufferUtils;
 
 public class Prog1Game extends ApplicationAdapter {
 	
-	private FloatBuffer vertexBuffer;
+	public static FloatBuffer vertexBuffer;
 
 	private FloatBuffer modelMatrix;
 	private FloatBuffer projectionMatrix;
@@ -20,26 +23,26 @@ public class Prog1Game extends ApplicationAdapter {
 	private int vertexShaderID;
 	private int fragmentShaderID;
 
-	private int positionLoc;
+	public static int positionLoc;
 
 	private int modelMatrixLoc;
 	private int projectionMatrixLoc;
 
-	private int colorLoc;
-	private float position_x;
-	private float position_y;
-	
+	public static int colorLoc;
 	private float deltaTime;
 	
-	private float windowHeight;
-	private float windowWidth;
-
+	private static final float OBSTACLE_TIMER = 2.0f;
+	
+	private List<Block> foods = new ArrayList<Block>();
+	private Snake snake;
+	private List<Obstacle> obstacles = new ArrayList<Obstacle>();
+	private float addObstacleTimer = OBSTACLE_TIMER;
+	
+	private Random random = new Random();
+	
 	@Override
 	public void create () {
 		
-		windowWidth  = Gdx.graphics.getWidth();
-		windowHeight = Gdx.graphics.getHeight();
-
 		String vertexShaderString;
 		String fragmentShaderString;
 
@@ -84,7 +87,6 @@ public class Prog1Game extends ApplicationAdapter {
 		projectionMatrix.rewind();
 		Gdx.gl.glUniformMatrix4fv(projectionMatrixLoc, 1, false, projectionMatrix);
 
-
 		float[] mm = new float[16];
 
 		mm[0] = 1.0f; mm[4] = 0.0f; mm[8] = 0.0f; mm[12] = 0.0f;
@@ -98,115 +100,149 @@ public class Prog1Game extends ApplicationAdapter {
 
 		Gdx.gl.glUniformMatrix4fv(modelMatrixLoc, 1, false, modelMatrix);
 
-		//VERTEX ARRAY IS FILLED HERE
-		float[] array = {-50.0f, -50.0f,
-						-50.0f, 50.0f,
-						50.0f, -50.0f,
-						50.0f, 50.0f};
-
 		vertexBuffer = BufferUtils.newFloatBuffer(8);
-		vertexBuffer.put(array);
-		vertexBuffer.rewind();
 		
 		Gdx.gl.glVertexAttribPointer(positionLoc, 2, GL20.GL_FLOAT, false, 0, vertexBuffer);
 		
-		position_x = 450.0f;
-		position_y = 200.0f;
+		snake = new Snake(Gdx.graphics.getWidth()/2, Gdx.graphics.getHeight()/2, 0.1f, Settings.WHITE);
+		foods.add(new Block(getRandomX(), getRandomY(), Settings.GREEN));
+		obstacles.add(new Obstacle(getRandomX(), getRandomY(), Settings.RED));
 	}
 
-	private void update()
-	{
+	private void update() {
 		deltaTime = Gdx.graphics.getDeltaTime();
 		
-		if(Gdx.input.justTouched())
-		{
-			//do mouse/touch input stuff
-			position_x = Gdx.input.getX();
-			position_y = Gdx.graphics.getHeight() - Gdx.input.getY();
-			
-			
+		// Add another obstacle every OBSTACLE_TIMER interval
+		addObstacleTimer -= deltaTime;
+		if (addObstacleTimer < 0) {
+			Sounds.OBSTACLE_ENTER.play();
+			obstacles.add(new Obstacle(getRandomX(), getRandomY(), Settings.RED));
+			addObstacleTimer = OBSTACLE_TIMER;
 		}
-		//do all updates to the game
-		if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
-			position_x -= 2.0f;
+		
+		// Check if snake ate food
+		checkIfSnakeDied();
+		boolean ate = checkIfSnakeAte();
+		handleInput();
+		for (Obstacle obstacle : obstacles) {
+			obstacle.update(deltaTime);
 		}
-		else if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
-			position_x += 2.0f;
-		}
-		else if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
-			position_y += 2.0f;
-		}
-		else if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
-			position_y -= 2.0f;
-		}
+		snake.update(deltaTime, ate);
 	}
 	
 	private void clearScreen() {
-		Gdx.gl.glClearColor(0.4f, 0.6f, 1.0f, 1.0f);
+		Gdx.gl.glClearColor(Settings.BLACK.r, Settings.BLACK.g, Settings.BLACK.b, Settings.BLACK.a);
 		Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 	}
 	
-	private void display()
-	{
-		//COLOR IS SET HERE
-		Gdx.gl.glUniform4f(colorLoc, 0.3f, 0.2f, 0, 1);
-				
-		setModelMatrixTranslation(position_x, position_y);
-		Gdx.gl.glDrawArrays(GL20.GL_TRIANGLE_STRIP, 0, 4);
-				
-		Gdx.gl.glVertexAttribPointer(positionLoc, 2, GL20.GL_FLOAT, false, 0, vertexBuffer);
+	private void display() {
+		for (Obstacle obstacle : obstacles) {
+			obstacle.draw();
+		}
+		snake.draw();
+		for (Block food: foods) {
+			food.draw();
+		}
+	}
+	
+	private void handleInput() {
+		if(Gdx.input.justTouched())
+		{
+			//do mouse/touch input stuff
+			float mouseX = Gdx.input.getX();
+			float mouseY = Gdx.graphics.getHeight() - Gdx.input.getY();
+			foods.add(new Block(mouseX, mouseY, Settings.GREEN));
+		}
 		
-		//COLOR IS SET HERE
-		Gdx.gl.glUniform4f(colorLoc, 0.8f, 1.0f, 0, 1);
-		
-		setModelMatrixTranslation(300.0f, 300.0f);
-		Gdx.gl.glDrawArrays(GL20.GL_TRIANGLE_STRIP, 0, 4);
+		//do all updates to the game
+		if (Gdx.input.isKeyPressed(Input.Keys.LEFT)) {
+			snake.setDirection("left");
+		}
+		else if (Gdx.input.isKeyPressed(Input.Keys.RIGHT)) {
+			snake.setDirection("right");
+		}
+		else if (Gdx.input.isKeyPressed(Input.Keys.UP)) {
+			snake.setDirection("up");
+		}
+		else if (Gdx.input.isKeyPressed(Input.Keys.DOWN)) {
+			snake.setDirection("down");
+		}
 	}
 
 	@Override
 	public void render () {
-		
-		//put the code inside the update and display methods, depending on the nature of the code
 		update();
 		clearScreen();
 		display();
-
 	}
-
-
-	private void clearModelMatrix()
-	{
-		modelMatrix.put(0, 1.0f);
-		modelMatrix.put(1, 0.0f);
-		modelMatrix.put(2, 0.0f);
-		modelMatrix.put(3, 0.0f);
-		modelMatrix.put(4, 0.0f);
-		modelMatrix.put(5, 1.0f);
-		modelMatrix.put(6, 0.0f);
-		modelMatrix.put(7, 0.0f);
-		modelMatrix.put(8, 0.0f);
-		modelMatrix.put(9, 0.0f);
-		modelMatrix.put(10, 1.0f);
-		modelMatrix.put(11, 0.0f);
-		modelMatrix.put(12, 0.0f);
-		modelMatrix.put(13, 0.0f);
-		modelMatrix.put(14, 0.0f);
-		modelMatrix.put(15, 1.0f);
-
-		Gdx.gl.glUniformMatrix4fv(modelMatrixLoc, 1, false, modelMatrix);
+	
+	private float getRandomX() {
+		float num = random.nextInt((int) Settings.WINDOW_WIDTH);
+		num -= (num+Settings.BLOCK_SIZE/2) % Settings.BLOCK_SIZE;
+		num = (num < 0) ? Settings.WINDOW_WIDTH/2 : num;
+		num = (num > Settings.WINDOW_WIDTH) ? Settings.WINDOW_WIDTH/2 : num;
+		return num;
 	}
-	private void setModelMatrixTranslation(float xTranslate, float yTranslate)
-	{
-		modelMatrix.put(12, xTranslate);
-		modelMatrix.put(13, yTranslate);
-
-		Gdx.gl.glUniformMatrix4fv(modelMatrixLoc, 1, false, modelMatrix);
+	
+	private float getRandomY() {
+		float num = random.nextInt((int) Settings.WINDOW_HEIGHT);
+		num -= (num+Settings.BLOCK_SIZE/2) % Settings.BLOCK_SIZE;
+		num = (num < 0) ? Settings.WINDOW_HEIGHT/2 : num;
+		num = (num > Settings.WINDOW_HEIGHT) ? Settings.WINDOW_HEIGHT/2 : num;
+		return num;
 	}
-	private void setModelMatrixScale(float xScale, float yScale)
-	{
-		modelMatrix.put(0, xScale);
-		modelMatrix.put(5, yScale);
-
-		Gdx.gl.glUniformMatrix4fv(modelMatrixLoc, 1, false, modelMatrix);
+	
+	private boolean checkIfSnakeAte() {
+		for (Block food: foods) {
+			if (snake.headIntersectsBlock(food)) {
+				Sounds.EAT.play();
+				if (foods.size() > 1) {
+					foods.remove(food);
+				}
+				else {
+					food.setLocation(getRandomX(), getRandomY());					
+				}
+				if (obstacles.size() > 0) {
+					obstacles.remove(0);
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+	
+	private void checkIfSnakeDied() {
+		float[] snakeBounds = snake.getBounds();
+		
+		// Check if snake hits boundaries of the game window or hits own tail
+		if (snakeBounds[0] < 0 || snakeBounds[2] > Settings.WINDOW_WIDTH ||
+			snakeBounds[1] < 0 || snakeBounds[3] > Settings.WINDOW_HEIGHT ||
+			snake.intersectsTail()) {
+			Sounds.HURT.play();
+			snake.reset();
+			resetFood();
+			resetObstacles();
+			addObstacleTimer = OBSTACLE_TIMER;
+		}
+		for (Obstacle obstacle : obstacles) {
+			if (snake.intersectsBlock(obstacle)) {
+				Sounds.HURT.play();
+				snake.reset();
+				resetFood();
+				resetObstacles();
+				addObstacleTimer = OBSTACLE_TIMER;
+				return;
+			}
+		}
+	}
+	
+	private void resetFood() {
+		foods.clear();
+		foods.add(new Block(getRandomX(), getRandomY(), Settings.GREEN));
+	}
+	
+	private void resetObstacles() {
+		obstacles.clear();
+		obstacles.add(new Obstacle(getRandomX(), getRandomY(), Settings.RED));
 	}
 }
